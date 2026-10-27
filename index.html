@@ -1,0 +1,2249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>SU 模型查看器</title>
+  <meta name="theme-color" content="#f5f7fa" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --primary: #3b82f6;
+      --primary-soft: #eff6ff;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+      z-index: 20;
+    }
+    .topbar h1 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+      flex: 1;
+      letter-spacing: .2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .btn {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 14px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background .15s, border-color .15s, color .15s;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .btn:active { background: #f3f4f6; }
+    .btn-sm { padding: 7px 11px; font-size: 13px; border-radius: 9px; }
+    .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .btn-primary:active { background: #2563eb; }
+    .btn-ghost { border-color: transparent; background: transparent; }
+    .btn-ghost:active { background: #f3f4f6; }
+    .btn.active {
+      background: var(--primary-soft);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    .btn-danger { background: #fff; border-color: #fecaca; color: var(--danger); }
+    .btn-danger:active { background: #fef2f2; }
+
+    #viewport {
+      flex: 1;
+      position: relative;
+      min-height: 0;
+      background: var(--bg);
+      overflow: hidden;
+    }
+    #viewport canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+    .annot-layer {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      overflow: visible;
+      z-index: 4;
+    }
+    .annot-layer .annot-el { pointer-events: none; }
+    .annot-layer .annot-hit {
+      pointer-events: stroke;
+      cursor: pointer;
+    }
+    .annot-layer .annot-hit-fill {
+      pointer-events: fill;
+      cursor: pointer;
+    }
+    .annot-layer.drawing .annot-hit,
+    .annot-layer.drawing .annot-hit-fill { pointer-events: none; }
+
+    .label-layer {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 5;
+    }
+    
+    /* 纯文本气泡，无背景 */
+    .annot-bubble {
+      pointer-events: auto;
+      display: inline-flex;
+      align-items: center;
+      background: transparent;
+      padding: 2px 4px;
+      font-size: 13.5px;
+      font-weight: 500;
+      line-height: 1.35;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      text-shadow: 0 1px 4px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,1);
+      transition: transform .12s;
+    }
+    .annot-bubble:active { transform: scale(.96); }
+    .annot-bubble-text { overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+
+    .annot-leader {
+      pointer-events: auto;
+      display: inline-flex;
+      align-items: center;
+      background: transparent;
+      padding: 2px 4px;
+      font-size: 13.5px;
+      font-weight: 500;
+      line-height: 1.35;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      text-shadow: 0 1px 4px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,1);
+      transition: transform .12s;
+    }
+    .annot-leader:active { transform: scale(.96); }
+    .annot-leader-text { overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+
+    .empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      padding: 24px;
+      pointer-events: none;
+      z-index: 6;
+    }
+    .empty .big { font-size: 40px; opacity: .45; }
+    .empty .hint { font-size: 12px; line-height: 1.7; max-width: 260px; }
+
+    .status {
+      position: absolute;
+      left: 50%;
+      bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+      transform: translateX(-50%);
+      background: rgba(31, 41, 55, .84);
+      color: #fff;
+      font-size: 13px;
+      padding: 9px 16px;
+      border-radius: 999px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .2s;
+      white-space: nowrap;
+      max-width: 88vw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      z-index: 25;
+    }
+    .status.show { opacity: 1; }
+
+    .viewbar {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 6px;
+      background: rgba(255, 255, 255, .94);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      box-shadow: 0 4px 20px rgba(31, 41, 55, .10);
+      z-index: 15;
+      max-width: calc(100vw - 20px);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .viewbar::-webkit-scrollbar { display: none; }
+    .vbtn {
+      flex: 0 0 auto;
+      width: 38px; height: 38px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background .15s, color .15s;
+    }
+    .vbtn:active { background: #eef2f7; }
+    .vbtn.active { background: var(--primary); color: #fff; }
+    .vbtn.locked { background: #fef3c7; color: #b45309; }
+    .vsep { flex: 0 0 1px; width: 1px; height: 24px; background: var(--line); margin: 0 2px; }
+
+    .tool-pop {
+      position: absolute;
+      top: calc(56px + env(safe-area-inset-top, 0px));
+      right: 12px;
+      z-index: 35;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 10px 32px rgba(15, 23, 42, .18);
+      padding: 10px;
+      display: none;
+      width: 246px;
+      transform-origin: top right;
+    }
+    .tool-pop.show { display: block; animation: popIn .16s ease; }
+    @keyframes popIn {
+      from { opacity: 0; transform: scale(.94); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .tool-pop-title {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0 2px 8px;
+      font-weight: 500;
+    }
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .tool-cell {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: #fafbfc;
+      border-radius: 10px;
+      padding: 9px 4px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      font-family: inherit;
+      font-size: 11.5px;
+      color: var(--text);
+      transition: background .15s, border-color .15s, color .15s;
+    }
+    .tool-cell:active { background: #eef2f7; }
+    .tool-cell .ic { font-size: 17px; line-height: 1; }
+    .tool-cell.active {
+      background: var(--primary-soft);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    .tool-sep { height: 1px; background: var(--line); margin: 10px 0 8px; }
+    .swatch-row {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      padding: 2px 2px 0;
+    }
+    .swatch {
+      appearance: none;
+      width: 26px; height: 26px;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      padding: 0;
+      transition: transform .12s;
+    }
+    .swatch:active { transform: scale(.9); }
+    .swatch.active {
+      border-color: var(--text);
+      box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--text);
+    }
+
+    .annot-pop {
+      position: absolute;
+      z-index: 36;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 11px 12px;
+      box-shadow: 0 10px 32px rgba(15, 23, 42, .18);
+      display: none;
+      width: 244px;
+    }
+    .annot-pop.show { display: block; animation: popIn .16s ease; }
+    .annot-pop .pop-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: .2px;
+    }
+    .annot-pop .pop-head .close-x {
+      width: 24px; height: 24px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .annot-pop .pop-head .close-x:active { background: #f3f4f6; }
+    .annot-pop textarea {
+      width: 100%;
+      min-height: 54px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: none;
+      outline: none;
+      color: var(--text);
+      background: #fafbfc;
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+    .annot-pop textarea:focus { border-color: var(--primary); background: #fff; }
+    .annot-pop .pop-color-label {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .annot-pop .swatch-row { margin-bottom: 10px; }
+    .annot-pop .swatch { width: 22px; height: 22px; border-radius: 6px; }
+    .annot-pop .pop-actions { display: flex; gap: 8px; }
+    .annot-pop .pop-actions .btn { flex: 1; padding: 8px; font-size: 13px; }
+
+    .drawer {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      background: var(--panel);
+      border-top: 1px solid var(--line);
+      border-radius: 18px 18px 0 0;
+      box-shadow: 0 -6px 24px rgba(0, 0, 0, .06);
+      transform: translateY(100%);
+      transition: transform .25s ease;
+      z-index: 30;
+      max-height: 62vh;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .drawer.open { transform: translateY(0); }
+    .drawer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 8px;
+      flex-shrink: 0;
+    }
+    .drawer-head h2 { font-size: 15px; margin: 0; font-weight: 600; }
+    .drawer-list {
+      overflow-y: auto;
+      padding: 0 12px 14px;
+      -webkit-overflow-scrolling: touch;
+      flex: 1;
+      min-height: 0;
+    }
+    .drawer-foot {
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .drawer-foot .btn { width: 100%; }
+
+    .model-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 10px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .model-row:active { background: #f3f4f6; }
+    .model-row .thumb {
+      width: 42px; height: 42px;
+      border-radius: 10px;
+      background: var(--primary-soft);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    .model-row .meta { flex: 1; min-width: 0; }
+    .model-row .meta .name {
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .model-row .meta .sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .model-row .del {
+      flex-shrink: 0;
+      width: 34px; height: 34px;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .model-row .del:active { background: #fee2e2; color: var(--danger); }
+    .list-empty {
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 26px 10px 30px;
+    }
+
+    .annot-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 8px;
+      border-radius: 10px;
+      cursor: default;
+    }
+    .annot-row:active { background: #f3f4f6; }
+    .annot-row .type-ic {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+    .annot-row .meta { flex: 1; min-width: 0; }
+    .annot-row .meta .name {
+      font-size: 13.5px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .annot-row .meta .sub {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .annot-row .ops { display: flex; gap: 2px; flex-shrink: 0; }
+    .annot-row .ops button {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+    .annot-row .ops button:active { background: #e5e7eb; }
+    .annot-row .ops button.del:active { background: #fee2e2; color: var(--danger); }
+
+    #fileInput { display: none; }
+
+    @media (display-mode: standalone) {
+      .topbar { padding-top: calc(8px + env(safe-area-inset-top, 0px)); }
+      .tool-pop { top: calc(52px + env(safe-area-inset-top, 0px)); }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <h1>SU 查看器</h1>
+    <button class="btn btn-sm" id="btnTag" type="button">标注</button>
+    <button class="btn btn-sm btn-ghost" id="btnList" type="button" aria-label="模型列表">☰</button>
+    <button class="btn btn-sm btn-primary" id="btnImport" type="button">＋ 导入</button>
+  </header>
+
+  <main id="viewport">
+    <div class="empty" id="emptyState">
+      <div class="big">📦</div>
+      <div>还没有模型</div>
+      <div class="hint">点击右上角「＋ 导入」<br>选择从 SketchUp 导出的 .glb 文件</div>
+    </div>
+
+    <svg class="annot-layer" id="annotLayer" xmlns="http://www.w3.org/2000/svg">
+      <g id="annotItems"></g>
+      <g id="drawPreview"></g>
+    </svg>
+
+    <div class="viewbar" id="viewbar">
+      <button class="vbtn" data-view="front" type="button">前</button>
+      <button class="vbtn" data-view="back" type="button">后</button>
+      <button class="vbtn" data-view="left" type="button">左</button>
+      <button class="vbtn" data-view="right" type="button">右</button>
+      <button class="vbtn" data-view="top" type="button">顶</button>
+      <button class="vbtn" data-view="bottom" type="button">底</button>
+      <button class="vbtn" data-view="iso" type="button">轴</button>
+      <span class="vsep"></span>
+      <button class="vbtn" id="btnLock" type="button" aria-label="视图锁定">🔓</button>
+    </div>
+
+    <div class="tool-pop" id="toolPop">
+      <div class="tool-pop-title">选择工具</div>
+      <div class="tool-grid" id="toolGrid">
+        <button class="tool-cell active" data-tool="select" type="button">
+          <span class="ic">☝️</span><span>选择</span>
+        </button>
+        <button class="tool-cell" data-tool="text" type="button">
+          <span class="ic">🅣</span><span>文字</span>
+        </button>
+        <button class="tool-cell" data-tool="leader" type="button">
+          <span class="ic">💬</span><span>引线</span>
+        </button>
+        <button class="tool-cell" data-tool="arrow" type="button">
+          <span class="ic">↗</span><span>箭头</span>
+        </button>
+        <button class="tool-cell" data-tool="rect" type="button">
+          <span class="ic">▭</span><span>框选</span>
+        </button>
+        <button class="tool-cell" data-tool="brush" type="button">
+          <span class="ic">✏️</span><span>画笔</span>
+        </button>
+      </div>
+      <div class="tool-sep"></div>
+      <div class="tool-pop-title">颜色</div>
+      <div class="swatch-row" id="toolSwatches"></div>
+      <div class="tool-sep"></div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn btn-sm" id="btnManageAnnots" type="button" style="flex:1;">全部标注</button>
+        <button class="btn btn-sm btn-danger" id="toolClose" type="button" style="flex:1;">关闭标注</button>
+      </div>
+    </div>
+
+    <div class="annot-pop" id="annotPop">
+      <div class="pop-head">
+        <span id="popType">编辑标注</span>
+        <button class="close-x" id="popClose" type="button" aria-label="关闭">✕</button>
+      </div>
+      <textarea id="popText" placeholder="输入标注文字…" maxlength="200"></textarea>
+      <div class="pop-color-label">颜色</div>
+      <div class="swatch-row" id="popSwatches"></div>
+      <div class="pop-actions">
+        <button class="btn btn-danger btn-sm" id="popDelete" type="button">删除</button>
+        <button class="btn btn-primary btn-sm" id="popSave" type="button">保存</button>
+      </div>
+    </div>
+
+    <div class="status" id="status"></div>
+  </main>
+
+  <input type="file" id="fileInput" accept=".glb" />
+
+  <aside class="drawer" id="drawer">
+    <div class="drawer-head">
+      <h2>已保存的模型</h2>
+      <button class="btn btn-sm btn-ghost" id="btnCloseDrawer" type="button">关闭</button>
+    </div>
+    <div class="drawer-list" id="modelList"></div>
+  </aside>
+
+  <aside class="drawer" id="annotDrawer">
+    <div class="drawer-head">
+      <h2>全部标注</h2>
+      <button class="btn btn-sm btn-ghost" id="btnCloseAnnotDrawer" type="button">关闭</button>
+    </div>
+    <div class="drawer-list" id="annotList"></div>
+    <div class="drawer-foot">
+      <button class="btn btn-sm btn-danger" id="btnClearAnnots" type="button">删除全部标注</button>
+    </div>
+  </aside>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const COLORS = [
+      '#3b82f6', '#ef4444', '#f97316', '#eab308',
+      '#22c55e', '#8b5cf6', '#ec4899', '#1f2937'
+    ];
+
+    /* =========================================================
+       1. IndexedDB
+       ========================================================= */
+    const DB_NAME = 'SUModelViewerDB';
+    const DB_VERSION = 2;
+    const STORE = 'models';
+    const LABEL_STORE = 'labels';
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(STORE)) {
+            const s = db.createObjectStore(STORE, { keyPath: 'id' });
+            s.createIndex('createdAt', 'createdAt');
+          }
+          if (!db.objectStoreNames.contains(LABEL_STORE)) {
+            const ls = db.createObjectStore(LABEL_STORE, { keyPath: 'id' });
+            ls.createIndex('modelId', 'modelId');
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbAddModel(record) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.objectStore(STORE).put(record);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    async function dbGetAllModels() {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const req = tx.objectStore(STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async function dbGetModel(id) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const req = tx.objectStore(STORE).get(id);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async function dbDeleteModel(id) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([STORE, LABEL_STORE], 'readwrite');
+        tx.objectStore(STORE).delete(id);
+        const idx = tx.objectStore(LABEL_STORE).index('modelId');
+        const cur = idx.openCursor(IDBKeyRange.only(id));
+        cur.onsuccess = () => {
+          const c = cur.result;
+          if (c) { c.delete(); c.continue(); }
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    async function dbPutLabel(label) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(LABEL_STORE, 'readwrite');
+        tx.objectStore(LABEL_STORE).put(label);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    async function dbDeleteLabel(id) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(LABEL_STORE, 'readwrite');
+        tx.objectStore(LABEL_STORE).delete(id);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    async function dbGetLabels(modelId) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(LABEL_STORE, 'readonly');
+        const idx = tx.objectStore(LABEL_STORE).index('modelId');
+        const req = idx.getAll(IDBKeyRange.only(modelId));
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    /* =========================================================
+       2. Three.js 场景
+       ========================================================= */
+    const viewport = document.getElementById('viewport');
+    const emptyState = document.getElementById('emptyState');
+    const statusEl = document.getElementById('status');
+    const annotLayer = document.getElementById('annotLayer');
+    const annotItems = document.getElementById('annotItems');
+    const drawPreview = document.getElementById('drawPreview');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#f5f7fa');
+
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 5000);
+    camera.position.set(3, 2, 5);
+    camera.zoom = 1;
+
+    let modelFitSize = 10;
+    let modelRadius = 1;
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: 'high-performance'
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    viewport.appendChild(renderer.domElement);
+
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.setSize(viewport.clientWidth, viewport.clientHeight);
+    labelRenderer.domElement.className = 'label-layer';
+    viewport.appendChild(labelRenderer.domElement);
+
+    scene.add(new THREE.HemisphereLight('#ffffff', '#dfe7f0', 1.2));
+    const dirLight = new THREE.DirectionalLight('#ffffff', 2.0);
+    dirLight.position.set(5, 10, 7);
+    scene.add(dirLight);
+    const fillLight = new THREE.DirectionalLight('#ffffff', 0.6);
+    fillLight.position.set(-6, 3, -4);
+    scene.add(fillLight);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.screenSpacePanning = true;
+    controls.minZoom = 0.05;
+    controls.maxZoom = 60;
+    controls.zoomSpeed = 1.1;
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+    const grid = new THREE.GridHelper(20, 20, '#d8dee8', '#e8edf3');
+    grid.material.transparent = true;
+    grid.material.opacity = 0.55;
+    scene.add(grid);
+
+    const labelGroup = new THREE.Group();
+    scene.add(labelGroup);
+
+    let currentModel = null;
+    let currentModelId = null;
+    let currentObjectURL = null;
+    let viewLocked = false;
+
+    const loader = new GLTFLoader();
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+
+    /* =========================================================
+       3. 视锥 / 渲染循环
+       ========================================================= */
+    function updateOrthoFrustum() {
+      const w = viewport.clientWidth;
+      const h = viewport.clientHeight;
+      if (w === 0 || h === 0) return;
+      const aspect = w / h;
+      const worldH = Math.max(modelFitSize, modelFitSize / aspect);
+      const worldW = worldH * aspect;
+      camera.top = worldH / 2;
+      camera.bottom = -worldH / 2;
+      camera.left = -worldW / 2;
+      camera.right = worldW / 2;
+      camera.updateProjectionMatrix();
+    }
+
+    function resize() {
+      const w = viewport.clientWidth;
+      const h = viewport.clientHeight;
+      if (w === 0 || h === 0) return;
+      renderer.setSize(w, h);
+      labelRenderer.setSize(w, h);
+      annotLayer.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      updateOrthoFrustum();
+    }
+    window.addEventListener('resize', resize);
+    if (window.ResizeObserver) new ResizeObserver(resize).observe(viewport);
+
+    let camTween = null;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (camTween) {
+        const raw = (performance.now() - camTween.start) / camTween.dur;
+        const t = Math.min(raw, 1);
+        const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        camera.position.lerpVectors(camTween.fromPos, camTween.toPos, e);
+        controls.target.lerpVectors(camTween.fromTarget, camTween.toTarget, e);
+        camera.zoom = THREE.MathUtils.lerp(camTween.fromZoom, camTween.toZoom, e);
+        camera.updateProjectionMatrix();
+        camera.lookAt(controls.target);
+        if (raw >= 1) {
+          controls.enabled = true;
+          applyControlsState();
+          camTween = null;
+          controls.update();
+        }
+      } else {
+        controls.update();
+      }
+
+      renderer.render(scene, camera);
+      labelRenderer.render(scene, camera);
+      syncAnnotations();
+    }
+
+    /* =========================================================
+       4. 视角 / 锁定
+       ========================================================= */
+    const VIEW_DIRS = {
+      front:  new THREE.Vector3(0, 0, 1),
+      back:   new THREE.Vector3(0, 0, -1),
+      left:   new THREE.Vector3(-1, 0, 0),
+      right:  new THREE.Vector3(1, 0, 0),
+      top:    new THREE.Vector3(0, 1, 0),
+      bottom: new THREE.Vector3(0, -1, 0),
+      iso:    new THREE.Vector3(1, 0.75, 1).normalize()
+    };
+
+    function showStatus(text, duration = 2200) {
+      statusEl.textContent = text;
+      statusEl.classList.add('show');
+      clearTimeout(showStatus._t);
+      showStatus._t = setTimeout(() => statusEl.classList.remove('show'), duration);
+    }
+
+    function goToView(key, animated = true) {
+      if (!currentModel) {
+        showStatus('请先导入并打开一个模型', 1800);
+        return;
+      }
+      const dir = VIEW_DIRS[key].clone().normalize();
+      const distance = Math.max(modelFitSize, 1) * 3;
+      const target = new THREE.Vector3(0, 0, 0);
+
+      let pos = dir.clone().multiplyScalar(distance);
+      if (key === 'top')    pos = new THREE.Vector3(0, distance, distance * 0.0001);
+      if (key === 'bottom') pos = new THREE.Vector3(0, -distance, distance * 0.0001);
+
+      camera.up.set(0, 1, 0);
+      camera.near = 0.01;
+      camera.far = distance + modelFitSize * 4 + 100;
+      camera.updateProjectionMatrix();
+
+      document.querySelectorAll('.vbtn[data-view]').forEach((b) => {
+        b.classList.toggle('active', b.dataset.view === key);
+      });
+
+      if (!animated) {
+        camera.position.copy(pos);
+        controls.target.copy(target);
+        camera.zoom = 1;
+        camera.updateProjectionMatrix();
+        camera.lookAt(target);
+        controls.update();
+        return;
+      }
+
+      camTween = {
+        fromPos: camera.position.clone(),
+        toPos: pos.clone(),
+        fromTarget: controls.target.clone(),
+        toTarget: target.clone(),
+        fromZoom: camera.zoom,
+        toZoom: 1,
+        start: performance.now(),
+        dur: 420
+      };
+      controls.enabled = false;
+    }
+
+    document.querySelectorAll('.vbtn[data-view]').forEach((btn) => {
+      btn.addEventListener('click', () => goToView(btn.dataset.view, true));
+    });
+
+    controls.addEventListener('start', () => {
+      if (!viewLocked && !camTween) {
+        document.querySelectorAll('.vbtn[data-view]').forEach((b) => b.classList.remove('active'));
+      }
+    });
+
+    const btnLock = document.getElementById('btnLock');
+
+    function applyViewLock() {
+      controls.enableRotate = !viewLocked;
+      controls.enablePan = true;
+      controls.touches.ONE = viewLocked ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
+      controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
+      controls.mouseButtons = {
+        LEFT: viewLocked ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN
+      };
+      btnLock.classList.toggle('locked', viewLocked);
+      btnLock.textContent = viewLocked ? '🔒' : '🔓';
+    }
+
+    btnLock.addEventListener('click', () => {
+      viewLocked = !viewLocked;
+      applyViewLock();
+      showStatus(viewLocked ? '视图已锁定：单指平移，双指缩放' : '视图已解锁', 1800);
+    });
+
+    /* =========================================================
+       5. 模型加载 / 卸载
+       ========================================================= */
+    function clearLabelElements() {
+      labelElements.forEach((entry) => {
+        if (entry.cssObj) {
+          labelGroup.remove(entry.cssObj);
+          if (entry.cssObj.element && entry.cssObj.element.parentNode) {
+            entry.cssObj.element.parentNode.removeChild(entry.cssObj.element);
+          }
+        }
+        if (entry.svgEl && entry.svgEl.parentNode) {
+          entry.svgEl.parentNode.removeChild(entry.svgEl);
+        }
+      });
+      labelElements.clear();
+      annotItems.innerHTML = '';
+      drawPreview.innerHTML = '';
+      previewEls = null;
+    }
+
+    function disposeCurrent() {
+      clearLabelElements();
+      allLabels = [];
+      if (currentModel) {
+        scene.remove(currentModel);
+        currentModel.traverse((obj) => {
+          if (obj.isMesh) {
+            obj.geometry?.dispose();
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            mats.forEach((m) => {
+              if (!m) return;
+              Object.values(m).forEach((v) => { if (v && v.isTexture) v.dispose(); });
+              m.dispose();
+            });
+          }
+        });
+        currentModel = null;
+      }
+      if (currentObjectURL) {
+        URL.revokeObjectURL(currentObjectURL);
+        currentObjectURL = null;
+      }
+      currentModelId = null;
+      emptyState.style.display = '';
+    }
+
+    function fitModel(object) {
+      const box = new THREE.Box3().setFromObject(object);
+      if (box.isEmpty()) {
+        modelFitSize = 10;
+        modelRadius = 1;
+        updateOrthoFrustum();
+        return;
+      }
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      object.position.sub(center);
+
+      const maxExtent = Math.max(size.x, size.y, size.z, 0.001);
+      modelFitSize = maxExtent * 1.25;
+      modelRadius = Math.sqrt(size.x * size.x + size.y * size.y + size.z * size.z) / 2 || 1;
+      updateOrthoFrustum();
+
+      if (grid) {
+        grid.position.y = -size.y / 2;
+      }
+    }
+
+    let loadToken = 0;
+
+    function loadModelRecord(record) {
+      const token = ++loadToken;
+      disposeCurrent();
+      showStatus('正在加载模型…', 12000);
+      currentObjectURL = URL.createObjectURL(record.blob);
+
+      loader.load(
+        currentObjectURL,
+        async (gltf) => {
+          if (token !== loadToken) return;
+          currentModel = gltf.scene;
+          currentModelId = record.id;
+
+          currentModel.traverse((obj) => {
+            if (obj.isMesh && obj.material) {
+              obj.material.side = THREE.FrontSide;
+              if (obj.material.map) obj.material.map.colorSpace = THREE.SRGBColorSpace;
+            }
+          });
+
+          scene.add(currentModel);
+          fitModel(currentModel);
+          emptyState.style.display = 'none';
+
+          goToView('iso', false);
+          await refreshLabels();
+          showStatus(`已加载：${record.name}`, 1800);
+        },
+        undefined,
+        (err) => {
+          if (token !== loadToken) return;
+          console.error(err);
+          emptyState.style.display = currentModel ? 'none' : '';
+          showStatus('加载失败，请检查 GLB 文件是否完整', 3000);
+        }
+      );
+    }
+
+    /* =========================================================
+       6. 坐标转换工具
+       ========================================================= */
+    function worldToScreen(pos) {
+      const v = new THREE.Vector3(pos[0], pos[1], pos[2]).project(camera);
+      const rect = viewport.getBoundingClientRect();
+      return {
+        x: (v.x * 0.5 + 0.5) * rect.width,
+        y: (-v.y * 0.5 + 0.5) * rect.height,
+        visible: v.z >= -1 && v.z <= 1
+      };
+    }
+
+    function pickPoint(clientX, clientY) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+
+      if (currentModel) {
+        const hits = raycaster.intersectObject(currentModel, true);
+        if (hits.length) return hits[0].point.clone();
+      }
+      const n = new THREE.Vector3();
+      camera.getWorldDirection(n);
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, new THREE.Vector3(0, 0, 0));
+      const pt = new THREE.Vector3();
+      raycaster.ray.intersectPlane(plane, pt);
+      return pt;
+    }
+
+    let drawPlane = null;
+
+    function setupDrawPlane(anchorPoint) {
+      const n = new THREE.Vector3();
+      camera.getWorldDirection(n);
+      drawPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, anchorPoint);
+    }
+
+    function pickOnDrawPlane(clientX, clientY) {
+      if (!drawPlane) return pickPoint(clientX, clientY);
+      const rect = renderer.domElement.getBoundingClientRect();
+      ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+      const pt = new THREE.Vector3();
+      raycaster.ray.intersectPlane(drawPlane, pt);
+      return pt;
+    }
+
+    /* =========================================================
+       7. 标注状态与数据
+       ========================================================= */
+    let annotMode = false;
+    let annotTool = 'select';
+    let annotColor = COLORS[0];
+    let drawState = null; // 替换旧的 drawing
+    let allLabels = [];
+    const labelElements = new Map();
+
+    function normalizeLabel(label) {
+      if (!label.type) label.type = 'text';
+      if (!label.color) label.color = COLORS[0];
+      if (!label.text) label.text = '';
+      return label;
+    }
+
+    function applyControlsState() {
+      const drawingMode = annotMode && annotTool !== 'select';
+      controls.enabled = true;
+
+      if (drawingMode) {
+        controls.touches.ONE = null;
+        controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
+        controls.mouseButtons.LEFT = null;
+        controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+        controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+      } else {
+        applyViewLock();
+      }
+      annotLayer.classList.toggle('drawing', drawingMode);
+    }
+
+    /* =========================================================
+       8. 标注渲染
+       ========================================================= */
+    function buildHitLine(el) {
+      const hit = document.createElementNS(SVG_NS, 'line');
+      hit.setAttribute('stroke', 'transparent');
+      hit.setAttribute('stroke-width', '18');
+      hit.setAttribute('stroke-linecap', 'round');
+      hit.setAttribute('class', 'annot-hit');
+      return hit;
+    }
+    
+    function buildHitPolyline(el) {
+      const hit = document.createElementNS(SVG_NS, 'polyline');
+      hit.setAttribute('fill', 'none');
+      hit.setAttribute('stroke', 'transparent');
+      hit.setAttribute('stroke-width', '18');
+      hit.setAttribute('stroke-linecap', 'round');
+      hit.setAttribute('stroke-linejoin', 'round');
+      hit.setAttribute('class', 'annot-hit');
+      return hit;
+    }
+
+    function createArrowSvg(label) {
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('class', 'annot-el');
+
+      const line = document.createElementNS(SVG_NS, 'line');
+      line.setAttribute('stroke', label.color);
+      line.setAttribute('stroke-width', '2.5');
+      line.setAttribute('stroke-linecap', 'round');
+      g.appendChild(line);
+
+      const head = document.createElementNS(SVG_NS, 'polygon');
+      head.setAttribute('fill', label.color);
+      g.appendChild(head);
+
+      const hit = buildHitLine();
+      g.appendChild(hit);
+
+      g._line = line;
+      g._head = head;
+      g._hit = hit;
+      return g;
+    }
+
+    function createRectSvg(label) {
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('class', 'annot-el');
+
+      const rect = document.createElementNS(SVG_NS, 'rect');
+      rect.setAttribute('fill', hexToRgba(label.color, 0.08));
+      rect.setAttribute('stroke', label.color);
+      rect.setAttribute('stroke-width', '2');
+      rect.setAttribute('rx', '2');
+      g.appendChild(rect);
+
+      const hit = document.createElementNS(SVG_NS, 'rect');
+      hit.setAttribute('fill', 'transparent');
+      hit.setAttribute('stroke', 'transparent');
+      hit.setAttribute('stroke-width', '18');
+      hit.setAttribute('class', 'annot-hit-fill');
+      g.appendChild(hit);
+
+      g._rect = rect;
+      g._hit = hit;
+      return g;
+    }
+
+    function createBrushSvg(label) {
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('class', 'annot-el');
+
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', label.color);
+      path.setAttribute('stroke-width', '2.5');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      g.appendChild(path);
+
+      const hit = document.createElementNS(SVG_NS, 'path');
+      hit.setAttribute('fill', 'none');
+      hit.setAttribute('stroke', 'transparent');
+      hit.setAttribute('stroke-width', '18');
+      hit.setAttribute('stroke-linecap', 'round');
+      hit.setAttribute('stroke-linejoin', 'round');
+      hit.setAttribute('class', 'annot-hit');
+      g.appendChild(hit);
+
+      g._path = path;
+      g._hit = hit;
+      return g;
+    }
+
+    function createLeaderSvg(label) {
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('class', 'annot-el');
+
+      const line = document.createElementNS(SVG_NS, 'polyline');
+      line.setAttribute('fill', 'none');
+      line.setAttribute('stroke', label.color);
+      line.setAttribute('stroke-width', '1.8');
+      line.setAttribute('stroke-linecap', 'round');
+      line.setAttribute('stroke-linejoin', 'round');
+      g.appendChild(line);
+
+      const head = document.createElementNS(SVG_NS, 'polygon');
+      head.setAttribute('fill', label.color);
+      g.appendChild(head);
+
+      const hit = buildHitPolyline();
+      g.appendChild(hit);
+
+      g._line = line;
+      g._head = head;
+      g._hit = hit;
+      return g;
+    }
+
+    function createLeaderBubble(label) {
+      const el = document.createElement('div');
+      el.className = 'annot-leader';
+      el.style.color = label.color;
+      const txt = document.createElement('span');
+      txt.className = 'annot-leader-text';
+      txt.textContent = label.text || '…';
+      el.appendChild(txt);
+
+      el.addEventListener('pointerdown', (e) => e.stopPropagation());
+      el.addEventListener('click', (e) => {
+        if (!annotMode) return;
+        e.stopPropagation();
+        openAnnotPop(label, e.clientX, e.clientY);
+      });
+      return el;
+    }
+
+    function hexToRgba(hex, a) {
+      const h = hex.replace('#', '');
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      return `rgba(${r},${g},${b},${a})`;
+    }
+
+    function bindSvgClick(el, label) {
+      el.addEventListener('click', (e) => {
+        if (!annotMode) return;
+        if (annotTool !== 'select') return;
+        e.stopPropagation();
+        openAnnotPop(label, e.clientX, e.clientY);
+      });
+    }
+
+    function renderLabelElement(label) {
+      if (label.type === 'text') {
+        const el = document.createElement('div');
+        el.className = 'annot-bubble';
+        el.style.color = label.color;
+        const txt = document.createElement('span');
+        txt.className = 'annot-bubble-text';
+        txt.textContent = label.text || '…';
+        el.appendChild(txt);
+
+        el.addEventListener('pointerdown', (e) => e.stopPropagation());
+        el.addEventListener('click', (e) => {
+          if (!annotMode) return;
+          e.stopPropagation();
+          openAnnotPop(label, e.clientX, e.clientY);
+        });
+
+        const obj = new CSS2DObject(el);
+        obj.position.set(label.pos[0], label.pos[1], label.pos[2]);
+        labelGroup.add(obj);
+        labelElements.set(label.id, { cssObj: obj });
+        return;
+      }
+
+      if (label.type === 'leader') {
+        const bubbleEl = createLeaderBubble(label);
+        const obj = new CSS2DObject(bubbleEl);
+        obj.position.set(label.tip[0], label.tip[1], label.tip[2]);
+        obj.center.set(0, 0.5);
+        labelGroup.add(obj);
+
+        const svg = createLeaderSvg(label);
+        bindSvgClick(svg, label);
+        annotItems.appendChild(svg);
+
+        labelElements.set(label.id, { cssObj: obj, svgEl: svg });
+        return;
+      }
+
+      let el;
+      if (label.type === 'arrow') el = createArrowSvg(label);
+      else if (label.type === 'rect') el = createRectSvg(label);
+      else if (label.type === 'brush') el = createBrushSvg(label);
+      if (!el) return;
+
+      bindSvgClick(el, label);
+      annotItems.appendChild(el);
+      labelElements.set(label.id, { svgEl: el });
+    }
+
+    function updateSvgElement(el, label) {
+      if (label.type === 'arrow') {
+        const p1 = worldToScreen(label.start);
+        const p2 = worldToScreen(label.end);
+        el.style.display = (p1.visible || p2.visible) ? '' : 'none';
+        el._line.setAttribute('x1', p1.x);
+        el._line.setAttribute('y1', p1.y);
+        el._line.setAttribute('x2', p2.x);
+        el._line.setAttribute('y2', p2.y);
+        el._hit.setAttribute('x1', p1.x);
+        el._hit.setAttribute('y1', p1.y);
+        el._hit.setAttribute('x2', p2.x);
+        el._hit.setAttribute('y2', p2.y);
+
+        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        const size = 11;
+        const a1x = p2.x - size * Math.cos(angle - Math.PI / 7);
+        const a1y = p2.y - size * Math.sin(angle - Math.PI / 7);
+        const a2x = p2.x - size * Math.cos(angle + Math.PI / 7);
+        const a2y = p2.y - size * Math.sin(angle + Math.PI / 7);
+        el._head.setAttribute('points', `${p2.x},${p2.y} ${a1x},${a1y} ${a2x},${a2y}`);
+      } else if (label.type === 'rect') {
+        const p1 = worldToScreen(label.a);
+        const p2 = worldToScreen(label.b);
+        const x = Math.min(p1.x, p2.x);
+        const y = Math.min(p1.y, p2.y);
+        const w = Math.abs(p2.x - p1.x);
+        const h = Math.abs(p2.y - p1.y);
+        el._rect.setAttribute('x', x);
+        el._rect.setAttribute('y', y);
+        el._rect.setAttribute('width', w);
+        el._rect.setAttribute('height', h);
+        el._hit.setAttribute('x', x);
+        el._hit.setAttribute('y', y);
+        el._hit.setAttribute('width', w);
+        el._hit.setAttribute('height', h);
+      } else if (label.type === 'brush') {
+        const pts = label.points.map(worldToScreen);
+        if (!pts.length) return;
+        const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+        el._path.setAttribute('d', d);
+        el._hit.setAttribute('d', d);
+      } else if (label.type === 'leader') {
+        const p1 = worldToScreen(label.anchor);
+        const p2 = worldToScreen(label.tip);
+
+        const dx = p1.x - p2.x;
+        const extend = Math.min(Math.abs(dx) * 0.4, 24) * Math.sign(dx || 1);
+        const bx = p2.x + extend;
+        const by = p2.y;
+
+        el.style.display = (p1.visible || p2.visible) ? '' : 'none';
+        
+        const ptsStr = `${p2.x},${p2.y} ${bx},${by} ${p1.x},${p1.y}`;
+        el._line.setAttribute('points', ptsStr);
+        el._hit.setAttribute('points', ptsStr);
+
+        const angle = Math.atan2(p1.y - by, p1.x - bx);
+        const size = 11;
+        const a1x = p1.x - size * Math.cos(angle - Math.PI / 7);
+        const a1y = p1.y - size * Math.sin(angle - Math.PI / 7);
+        const a2x = p1.x - size * Math.cos(angle + Math.PI / 7);
+        const a2y = p1.y - size * Math.sin(angle + Math.PI / 7);
+        el._head.setAttribute('points', `${p1.x},${p1.y} ${a1x},${a1y} ${a2x},${a2y}`);
+      }
+    }
+
+    function syncAnnotations() {
+      if (allLabels.length) {
+        allLabels.forEach((label) => {
+          const entry = labelElements.get(label.id);
+          if (entry && entry.svgEl) updateSvgElement(entry.svgEl, label);
+        });
+      }
+    }
+
+    /* ---------- 纯 2D 实时预览（极速跟手，不做任何 3D 投影计算） ---------- */
+    let previewEls = null;
+
+    function initPreviewElements(type) {
+      drawPreview.innerHTML = '';
+      const els = { kind: type };
+      
+      if (type === 'arrow') {
+        const line = document.createElementNS(SVG_NS, 'line');
+        line.setAttribute('stroke', annotColor);
+        line.setAttribute('stroke-width', '2');
+        line.setAttribute('stroke-dasharray', '5 4');
+        line.setAttribute('stroke-linecap', 'round');
+        drawPreview.appendChild(line);
+        
+        const head = document.createElementNS(SVG_NS, 'polygon');
+        head.setAttribute('fill', annotColor);
+        drawPreview.appendChild(head);
+        
+        els.line = line;
+        els.head = head;
+      } else if (type === 'leader') {
+        const line = document.createElementNS(SVG_NS, 'polyline');
+        line.setAttribute('fill', 'none');
+        line.setAttribute('stroke', annotColor);
+        line.setAttribute('stroke-width', '2');
+        line.setAttribute('stroke-dasharray', '5 4');
+        line.setAttribute('stroke-linecap', 'round');
+        line.setAttribute('stroke-linejoin', 'round');
+        drawPreview.appendChild(line);
+        
+        const head = document.createElementNS(SVG_NS, 'polygon');
+        head.setAttribute('fill', annotColor);
+        drawPreview.appendChild(head);
+        
+        els.line = line;
+        els.head = head;
+      } else if (type === 'rect') {
+        const r = document.createElementNS(SVG_NS, 'rect');
+        r.setAttribute('fill', hexToRgba(annotColor, 0.15));
+        r.setAttribute('stroke', annotColor);
+        r.setAttribute('stroke-width', '2');
+        r.setAttribute('stroke-dasharray', '4 4');
+        drawPreview.appendChild(r);
+        els.rect = r;
+      } else if (type === 'brush') {
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', annotColor);
+        path.setAttribute('stroke-width', '2.5');
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        drawPreview.appendChild(path);
+        els.path = path;
+      }
+      
+      previewEls = els;
+    }
+
+    function syncPreview2D() {
+      if (!drawState) {
+        if (previewEls) {
+          drawPreview.innerHTML = '';
+          previewEls = null;
+        }
+        return;
+      }
+      if (!previewEls || previewEls.kind !== drawState.type) {
+        initPreviewElements(drawState.type);
+      }
+
+      const rect = viewport.getBoundingClientRect();
+      const x1 = drawState.startX - rect.left;
+      const y1 = drawState.startY - rect.top;
+      const x2 = drawState.endX - rect.left;
+      const y2 = drawState.endY - rect.top;
+
+      if (drawState.type === 'arrow') {
+        previewEls.line.setAttribute('x1', x1);
+        previewEls.line.setAttribute('y1', y1);
+        previewEls.line.setAttribute('x2', x2);
+        previewEls.line.setAttribute('y2', y2);
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        const size = 11;
+        const a1x = x2 - size * Math.cos(angle - Math.PI / 7);
+        const a1y = y2 - size * Math.sin(angle - Math.PI / 7);
+        const a2x = x2 - size * Math.cos(angle + Math.PI / 7);
+        const a2y = y2 - size * Math.sin(angle + Math.PI / 7);
+        previewEls.head.setAttribute('points', `${x2},${y2} ${a1x},${a1y} ${a2x},${a2y}`);
+      } else if (drawState.type === 'leader') {
+        const dx = x1 - x2;
+        const extend = Math.min(Math.abs(dx) * 0.4, 24) * Math.sign(dx || 1);
+        const bx = x2 + extend;
+        const by = y2;
+        previewEls.line.setAttribute('points', `${x2},${y2} ${bx},${by} ${x1},${y1}`);
+        const angle = Math.atan2(y1 - by, x1 - bx);
+        const size = 11;
+        const a1x = x1 - size * Math.cos(angle - Math.PI / 7);
+        const a1y = y1 - size * Math.sin(angle - Math.PI / 7);
+        const a2x = x1 - size * Math.cos(angle + Math.PI / 7);
+        const a2y = y1 - size * Math.sin(angle + Math.PI / 7);
+        previewEls.head.setAttribute('points', `${x1},${y1} ${a1x},${a1y} ${a2x},${a2y}`);
+      } else if (drawState.type === 'rect') {
+        previewEls.rect.setAttribute('x', Math.min(x1, x2));
+        previewEls.rect.setAttribute('y', Math.min(y1, y2));
+        previewEls.rect.setAttribute('width', Math.abs(x2 - x1));
+        previewEls.rect.setAttribute('height', Math.abs(y2 - y1));
+      } else if (drawState.type === 'brush') {
+        const d = drawState.points2D.map((p, i) => {
+          const px = p[0] - rect.left;
+          const py = p[1] - rect.top;
+          return (i === 0 ? 'M' : 'L') + px.toFixed(1) + ',' + py.toFixed(1);
+        }).join(' ');
+        previewEls.path.setAttribute('d', d);
+      }
+    }
+
+    async function refreshLabels() {
+      clearLabelElements();
+      allLabels = [];
+      if (!currentModelId) return;
+
+      let list = [];
+      try {
+        list = await dbGetLabels(currentModelId);
+      } catch (e) { console.error(e); }
+      list.forEach(normalizeLabel);
+      list.sort((a, b) => a.createdAt - b.createdAt);
+
+      allLabels = list;
+      list.forEach(renderLabelElement);
+      syncAnnotations();
+    }
+
+    /* =========================================================
+       9. 工具浮窗
+       ========================================================= */
+    const btnTag = document.getElementById('btnTag');
+    const toolPop = document.getElementById('toolPop');
+    const toolSwatches = document.getElementById('toolSwatches');
+
+    function buildSwatches(container, current, onPick) {
+      container.innerHTML = '';
+      COLORS.forEach((c) => {
+        const b = document.createElement('button');
+        b.className = 'swatch' + (c === current ? ' active' : '');
+        b.style.background = c;
+        b.type = 'button';
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          container.querySelectorAll('.swatch').forEach((s) => s.classList.remove('active'));
+          b.classList.add('active');
+          onPick(c);
+        });
+        container.appendChild(b);
+      });
+    }
+
+    buildSwatches(toolSwatches, annotColor, (c) => { annotColor = c; });
+
+    function setAnnotMode(on) {
+      annotMode = on;
+      btnTag.classList.toggle('active', on);
+      if (on) {
+        showStatus('标注模式已开启，点顶部「标注」选择工具', 2200);
+      } else {
+        closeToolPop();
+        setAnnotTool('select', true);
+        annotDrawer.classList.remove('open');
+      }
+      applyControlsState();
+    }
+
+    function setAnnotTool(tool, silent = false) {
+      annotTool = tool;
+      document.querySelectorAll('#toolGrid .tool-cell[data-tool]').forEach((b) => {
+        b.classList.toggle('active', b.dataset.tool === tool);
+      });
+      applyControlsState();
+      if (!silent) {
+        if (tool !== 'select') {
+          closeToolPop();
+          const names = { text: '文字', arrow: '箭头', rect: '框选', brush: '画笔', leader: '引线' };
+          showStatus(`已选：${names[tool]}，在模型上操作`, 2000);
+        }
+      }
+    }
+
+    function openToolPop() {
+      buildSwatches(toolSwatches, annotColor, (c) => { annotColor = c; });
+      toolPop.classList.add('show');
+    }
+    function closeToolPop() { toolPop.classList.remove('show'); }
+
+    btnTag.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!currentModel) {
+        showStatus('请先导入并打开一个模型', 2000);
+        return;
+      }
+      if (!annotMode) {
+        setAnnotMode(true);
+        openToolPop();
+      } else {
+        if (toolPop.classList.contains('show')) {
+          setAnnotMode(false);
+        } else {
+          openToolPop();
+        }
+      }
+    });
+
+    document.querySelectorAll('#toolGrid .tool-cell[data-tool]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setAnnotTool(btn.dataset.tool);
+      });
+    });
+    document.getElementById('toolClose').addEventListener('click', (e) => {
+      e.stopPropagation();
+      setAnnotMode(false);
+      closeToolPop();
+    });
+
+    /* =========================================================
+       10. 标注编辑浮窗
+       ========================================================= */
+    const annotPop = document.getElementById('annotPop');
+    const popType = document.getElementById('popType');
+    const popText = document.getElementById('popText');
+    const popSwatches = document.getElementById('popSwatches');
+    const popDelete = document.getElementById('popDelete');
+    const popSave = document.getElementById('popSave');
+    const popClose = document.getElementById('popClose');
+
+    let editingLabel = null;
+    let popPickColor = null;
+
+    function openAnnotPop(label, clientX, clientY) {
+      editingLabel = label;
+      popPickColor = label.color;
+
+      const typeNames = { text: '文字标签', arrow: '箭头', rect: '框选', brush: '画笔', leader: '引线标注' };
+      popType.textContent = typeNames[label.type] || '编辑标注';
+
+      if (label.type === 'text' || label.type === 'leader') {
+        popText.style.display = '';
+        popText.value = label.text || '';
+        setTimeout(() => {
+          popText.focus();
+          popText.select();
+        }, 100);
+      } else {
+        popText.style.display = 'none';
+        popText.value = '';
+      }
+
+      buildSwatches(popSwatches, label.color, (c) => { popPickColor = c; });
+
+      const vpRect = viewport.getBoundingClientRect();
+      if (clientX == null) clientX = vpRect.left + vpRect.width / 2;
+      if (clientY == null) clientY = vpRect.top + vpRect.height / 2;
+
+      const popW = 244;
+      const estH = 230;
+      let x = clientX - vpRect.left - popW / 2;
+      let y = clientY - vpRect.top - estH - 12;
+
+      if (x < 8) x = 8;
+      if (x + popW > vpRect.width - 8) x = vpRect.width - popW - 8;
+      if (y < 8) y = clientY - vpRect.top + 16;
+      if (y + estH > vpRect.height - 8) y = Math.max(8, vpRect.height - estH - 8);
+
+      annotPop.style.left = x + 'px';
+      annotPop.style.top = y + 'px';
+      annotPop.classList.add('show');
+    }
+
+    function closeAnnotPop() {
+      annotPop.classList.remove('show');
+      editingLabel = null;
+      popPickColor = null;
+    }
+
+    popClose.addEventListener('click', (e) => { e.stopPropagation(); closeAnnotPop(); });
+    annotPop.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+    popSave.addEventListener('click', async () => {
+      if (!editingLabel) return;
+      if (editingLabel.type === 'text' || editingLabel.type === 'leader') {
+        const t = popText.value.trim();
+        if (editingLabel.type === 'text' && !t) {
+          showStatus('请输入文字内容', 1600);
+          return;
+        }
+        editingLabel.text = t;
+      }
+      if (popPickColor) editingLabel.color = popPickColor;
+
+      try {
+        await dbPutLabel(editingLabel);
+        updateSvgColor(editingLabel);
+        if (editingLabel.type === 'text' || editingLabel.type === 'leader') {
+          const entry = labelElements.get(editingLabel.id);
+          if (entry && entry.cssObj) {
+            entry.cssObj.element.style.color = editingLabel.color;
+            const tEl = entry.cssObj.element.querySelector('.annot-bubble-text') || entry.cssObj.element.querySelector('.annot-leader-text');
+            if (tEl) tEl.textContent = editingLabel.text || '…';
+          }
+        }
+        showStatus('已保存', 1400);
+        if (annotDrawer.classList.contains('open')) refreshAnnotList();
+      } catch (e) {
+        console.error(e);
+        showStatus('保存失败', 1800);
+      }
+      closeAnnotPop();
+    });
+
+    popDelete.addEventListener('click', async () => {
+      if (!editingLabel) return;
+      await deleteLabelById(editingLabel.id);
+      showStatus('已删除', 1400);
+      if (annotDrawer.classList.contains('open')) refreshAnnotList();
+      closeAnnotPop();
+    });
+
+    function updateSvgColor(label) {
+      const entry = labelElements.get(label.id);
+      if (!entry) return;
+
+      if (entry.cssObj) {
+        if (label.type === 'text' || label.type === 'leader') {
+          entry.cssObj.element.style.color = label.color;
+        }
+      }
+      
+      if (!entry.svgEl) return;
+      const el = entry.svgEl;
+      if (label.type === 'arrow') {
+        el._line.setAttribute('stroke', label.color);
+        el._head.setAttribute('fill', label.color);
+      } else if (label.type === 'rect') {
+        el._rect.setAttribute('stroke', label.color);
+        el._rect.setAttribute('fill', hexToRgba(label.color, 0.08));
+      } else if (label.type === 'brush') {
+        el._path.setAttribute('stroke', label.color);
+      } else if (label.type === 'leader') {
+        el._line.setAttribute('stroke', label.color);
+        el._head.setAttribute('fill', label.color);
+      }
+    }
+
+    document.addEventListener('click', (e) => {
+      if (toolPop.classList.contains('show') &&
+          !toolPop.contains(e.target) && !btnTag.contains(e.target)) {
+        closeToolPop();
+      }
+      if (annotPop.classList.contains('show') &&
+          !annotPop.contains(e.target) &&
+          !e.target.closest('.annot-el') &&
+          !e.target.closest('.annot-bubble') &&
+          !e.target.closest('.annot-leader')) {
+        closeAnnotPop();
+      }
+    });
+
+    /* =========================================================
+       11. 绘制交互 (纯 2D 预览，极速跟手)
+       ========================================================= */
+    const MIN_DIST = 0.002;
+    const canvas = renderer.domElement;
+
+    function handlePointerMove(e) {
+      if (!drawState) return;
+      if (e.cancelable) e.preventDefault();
+      
+      drawState.endX = e.clientX;
+      drawState.endY = e.clientY;
+      
+      if (drawState.type === 'brush') {
+        drawState.points2D.push([e.clientX, e.clientY]);
+      }
+      
+      syncPreview2D();
+    }
+
+    function handlePointerUp(e) {
+      canvas.removeEventListener('pointermove', handlePointerMove);
+      canvas.removeEventListener('pointerup', handlePointerUp);
+      canvas.removeEventListener('pointercancel', handlePointerUp);
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+
+      if (!drawState) return;
+      if (e.cancelable) e.preventDefault();
+
+      const d = drawState;
+      drawState = null;
+      drawPlane = null;
+      syncPreview2D(); // 清除预览
+      applyControlsState();
+
+      if (e.type === 'pointercancel') {
+        setAnnotMode(false);
+        return;
+      }
+
+      const moveDist = Math.hypot(d.endX - d.startX, d.endY - d.startY);
+      if (moveDist < 5 && d.type !== 'text') {
+        setAnnotMode(false);
+        return; // 太小忽略
+      }
+
+      if (d.type === 'text') {
+        if (moveDist > 8) {
+          setAnnotMode(false);
+          return;
+        }
+        const label = {
+          id: uid(),
+          modelId: currentModelId,
+          type: 'text',
+          color: annotColor,
+          text: '新标注',
+          pos: [d.anchor3D.x, d.anchor3D.y, d.anchor3D.z],
+          createdAt: Date.now()
+        };
+        allLabels.push(label);
+        renderLabelElement(label);
+        syncAnnotations();
+        dbPutLabel(label).catch(console.error);
+        setAnnotMode(false);
+        openAnnotPop(label, e.clientX, e.clientY);
+        return;
+      }
+
+      if (d.type === 'arrow') {
+        const end3D = pickOnDrawPlane(e.clientX, e.clientY);
+        if (d.anchor3D.distanceTo(end3D) < modelFitSize * MIN_DIST) {
+          setAnnotMode(false);
+          return;
+        }
+        const label = {
+          id: uid(),
+          modelId: currentModelId,
+          type: 'arrow',
+          color: annotColor,
+          text: '',
+          start: [d.anchor3D.x, d.anchor3D.y, d.anchor3D.z],
+          end: [end3D.x, end3D.y, end3D.z],
+          createdAt: Date.now()
+        };
+        allLabels.push(label);
+        renderLabelElement(label);
+        syncAnnotations();
+        dbPutLabel(label).catch(console.error);
+        setAnnotMode(false);
+      } else if (d.type === 'rect') {
+        const end3D = pickOnDrawPlane(e.clientX, e.clientY);
+        if (d.anchor3D.distanceTo(end3D) < modelFitSize * MIN_DIST) {
+          setAnnotMode(false);
+          return;
+        }
+        const label = {
+          id: uid(),
+          modelId: currentModelId,
+          type: 'rect',
+          color: annotColor,
+          text: '',
+          a: [d.anchor3D.x, d.anchor3D.y, d.anchor3D.z],
+          b: [end3D.x, end3D.y, end3D.z],
+          createdAt: Date.now()
+        };
+        allLabels.push(label);
+        renderLabelElement(label);
+        syncAnnotations();
+        dbPutLabel(label).catch(console.error);
+        setAnnotMode(false);
+      } else if (d.type === 'brush') {
+        if (d.points2D.length < 2) {
+          setAnnotMode(false);
+          return;
+        }
+        // 转换所有 2D 屏幕坐标为 3D 空间点
+        const points3D = d.points2D.map(p => {
+          const pt = pickOnDrawPlane(p[0], p[1]);
+          return [pt.x, pt.y, pt.z];
+        });
+        
+        const label = {
+          id: uid(),
+          modelId: currentModelId,
+          type: 'brush',
+          color: annotColor,
+          text: '',
+          points: points3D,
+          createdAt: Date.now()
+        };
+        allLabels.push(label);
+        renderLabelElement(label);
+        syncAnnotations();
+        dbPutLabel(label).catch(console.error);
+        setAnnotMode(false);
+      } else if (d.type === 'leader') {
+        const end3D = pickOnDrawPlane(e.clientX, e.clientY);
+        if (d.anchor3D.distanceTo(end3D) < modelFitSize * 0.02) {
+          setAnnotMode(false);
+          return;
+        }
+        const label = {
+          id: uid(),
+          modelId: currentModelId,
+          type: 'leader',
+          color: annotColor,
+          text: '引线说明',
+          anchor: [d.anchor3D.x, d.anchor3D.y, d.anchor3D.z],
+          tip: [end3D.x, end3D.y, end3D.z],
+          createdAt: Date.now()
+        };
+        allLabels.push(label);
+        renderLabelElement(label);
+        syncAnnotations();
+        dbPutLabel(label).catch(console.error);
+        setAnnotMode(false);
+        openAnnotPop(label, e.clientX, e.clientY);
+      }
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (!annotMode || annotTool === 'select' || !currentModel) return;
+      if (drawState) return;
+      
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      
+      const pt = pickPoint(e.clientX, e.clientY);
+      
+      controls.enabled = false;
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+
+      setupDrawPlane(pt);
+      
+      drawState = {
+        type: annotTool,
+        startX: e.clientX,
+        startY: e.clientY,
+        endX: e.clientX,
+        endY: e.clientY,
+        anchor3D: pt,
+        points2D: [[e.clientX, e.clientY]]
+      };
+      
+      syncPreview2D();
+
+      canvas.addEventListener('pointermove', handlePointerMove, { passive: false });
+      canvas.addEventListener('pointerup', handlePointerUp);
+      canvas.addEventListener('pointercancel', handlePointerUp);
+
+    }, { capture: true });
+
+    function uid() {
+      return 'L' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
+
+    /* =========================================================
+       12. 标注管理（全部标注 / 单条删除 / 删除全部）
+       ========================================================= */
+    const annotDrawer = document.getElementById('annotDrawer');
+    const annotListEl = document.getElementById('annotList');
+    const btnClearAnnots = document.getElementById('btnClearAnnots');
+    const btnManageAnnots = document.getElementById('btnManageAnnots');
+
+    const TYPE_META = {
+      text: { ic: '🅣', name: '文字' },
+      arrow: { ic: '↗', name: '箭头' },
+      rect: { ic: '▭', name: '框选' },
+      brush: { ic: '✏️', name: '画笔' },
+      leader: { ic: '💬', name: '引线' }
+    };
+
+    function summaryOf(label) {
+      if (label.text && label.text.trim()) return label.text;
+      return (TYPE_META[label.type]?.name || '标注') + '标注';
+    }
+
+    function refreshAnnotList() {
+      annotDrawer.classList.add('open');
+      drawer.classList.remove('open');
+
+      if (!allLabels.length) {
+        annotListEl.innerHTML = '<div class="list-empty">还没有标注</div>';
+        btnClearAnnots.disabled = true;
+        btnClearAnnots.style.opacity = '.5';
+        return;
+      }
+      btnClearAnnots.disabled = false;
+      btnClearAnnots.style.opacity = '1';
+
+      annotListEl.innerHTML = '';
+      const sorted = [...allLabels].sort((a, b) => b.createdAt - a.createdAt);
+      sorted.forEach((label) => {
+        const meta = TYPE_META[label.type] || { ic: '•', name: '标注' };
+        const row = document.createElement('div');
+        row.className = 'annot-row';
+        row.innerHTML = `
+          <div class="type-ic"></div>
+          <div class="meta">
+            <div class="name"></div>
+            <div class="sub"></div>
+          </div>
+          <div class="ops">
+            <button type="button" class="edit" aria-label="编辑">✎</button>
+            <button type="button" class="del" aria-label="删除">✕</button>
+          </div>
+        `;
+        const ic = row.querySelector('.type-ic');
+        ic.textContent = meta.ic;
+        ic.style.background = hexToRgba(label.color, 0.12);
+        ic.style.color = label.color;
+        row.querySelector('.name').textContent = summaryOf(label);
+        row.querySelector('.sub').textContent =
+          `${meta.name} · ${new Date(label.createdAt).toLocaleString('zh-CN')}`;
+
+        row.querySelector('.edit').addEventListener('click', (e) => {
+          e.stopPropagation();
+          openAnnotPop(label, null, null);
+        });
+        row.querySelector('.del').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await deleteLabelById(label.id);
+          refreshAnnotList();
+        });
+        annotListEl.appendChild(row);
+      });
+    }
+
+    async function deleteLabelById(id) {
+      try {
+        await dbDeleteLabel(id);
+        const idx = allLabels.findIndex((l) => l.id === id);
+        if (idx >= 0) allLabels.splice(idx, 1);
+        const entry = labelElements.get(id);
+        if (entry) {
+          if (entry.cssObj) {
+            labelGroup.remove(entry.cssObj);
+            if (entry.cssObj.element && entry.cssObj.element.parentNode) {
+              entry.cssObj.element.parentNode.removeChild(entry.cssObj.element);
+            }
+          }
+          if (entry.svgEl && entry.svgEl.parentNode) {
+            entry.svgEl.parentNode.removeChild(entry.svgEl);
+          }
+          labelElements.delete(id);
+        }
+      } catch (e) {
+        console.error(e);
+        showStatus('删除失败', 1800);
+      }
+    }
+
+    btnManageAnnots.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeToolPop();
+      refreshAnnotList();
+    });
+
+    document.getElementById('btnCloseAnnotDrawer').addEventListener('click', () => {
+      annotDrawer.classList.remove('open');
+    });
+
+    btnClearAnnots.addEventListener('click', async () => {
+      if (!allLabels.length) return;
+      if (!window.confirm(`删除全部 ${allLabels.length} 个标注？此操作不可恢复。`)) return;
+      const ids = allLabels.map((l) => l.id);
+      for (const id of ids) {
+        try { await dbDeleteLabel(id); } catch (e) { console.error(e); }
+      }
+      allLabels = [];
+      clearLabelElements();
+      refreshAnnotList();
+      showStatus('已删除全部标注', 1500);
+    });
+
+    /* =========================================================
+       13. 模型列表
+       ========================================================= */
+    const fileInput = document.getElementById('fileInput');
+    const drawer = document.getElementById('drawer');
+    const modelListEl = document.getElementById('modelList');
+
+    document.getElementById('btnImport').addEventListener('click', () => {
+      fileInput.value = '';
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith('.glb')) {
+        showStatus('请选择 .glb 文件', 2500);
+        return;
+      }
+      const record = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+        name: file.name,
+        size: file.size,
+        createdAt: Date.now(),
+        blob: file
+      };
+      try {
+        await dbAddModel(record);
+        loadModelRecord(record);
+        await refreshModelList();
+        showStatus(`已保存：${file.name}`, 2000);
+      } catch (e) {
+        console.error(e);
+        showStatus('保存失败，可能是存储空间不足', 3000);
+      }
+    });
+
+    document.getElementById('btnList').addEventListener('click', async () => {
+      annotDrawer.classList.remove('open');
+      await refreshModelList();
+      drawer.classList.add('open');
+    });
+    document.getElementById('btnCloseDrawer').addEventListener('click', () => {
+      drawer.classList.remove('open');
+    });
+
+    function formatSize(bytes) {
+      if (!bytes) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let i = 0, n = bytes;
+      while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+      return `${n.toFixed(n >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+    }
+
+    async function refreshModelList() {
+      let models = [];
+      try {
+        models = await dbGetAllModels();
+        models.sort((a, b) => b.createdAt - a.createdAt);
+      } catch (e) { console.error(e); }
+
+      if (!models.length) {
+        modelListEl.innerHTML = '<div class="list-empty">还没有保存的模型</div>';
+        return;
+      }
+      modelListEl.innerHTML = '';
+      models.forEach((m) => {
+        const row = document.createElement('div');
+        row.className = 'model-row';
+        row.innerHTML = `
+          <div class="thumb">📄</div>
+          <div class="meta">
+            <div class="name"></div>
+            <div class="sub">${formatSize(m.size)} · ${new Date(m.createdAt).toLocaleDateString('zh-CN')}</div>
+          </div>
+          <button class="del" type="button" aria-label="删除">✕</button>
+        `;
+        row.querySelector('.name').textContent = m.name;
+
+        row.addEventListener('click', async (e) => {
+          if (e.target.closest('.del')) return;
+          drawer.classList.remove('open');
+          const record = await dbGetModel(m.id);
+          if (record && record.blob) loadModelRecord(record);
+          else showStatus('模型数据读取失败', 2500);
+        });
+
+        row.querySelector('.del').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!window.confirm(`删除「${m.name}」及其全部标签？`)) return;
+          await dbDeleteModel(m.id);
+          if (currentModelId === m.id) {
+            disposeCurrent();
+          }
+          await refreshModelList();
+          showStatus('已删除', 1500);
+        });
+
+        modelListEl.appendChild(row);
+      });
+    }
+
+    /* =========================================================
+       14. 启动
+       ========================================================= */
+    (async function init() {
+      updateOrthoFrustum();
+      resize();
+      animate();
+      await refreshModelList();
+      if ('serviceWorker' in navigator) {
+        try { await navigator.serviceWorker.register('sw.js'); }
+        catch (e) { console.warn('SW 注册失败', e); }
+      }
+      if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().catch(() => {});
+      }
+    })();
+  </script>
+</body>
+</html>

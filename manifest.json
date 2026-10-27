@@ -1,0 +1,20 @@
+{
+  "name": "SU 模型查看器",
+  "short_name": "SU查看器",
+  "description": "在手机上本地查看 SketchUp 导出的 GLB 模型",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f7fa",
+  "theme_color": "#ffffff",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
